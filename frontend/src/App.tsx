@@ -5,9 +5,19 @@ import { ApiRequestTester } from "./components/ApiRequestTester";
 import { CandidateEditor } from "./components/CandidateEditor";
 import { QueryCard } from "./components/QueryCard";
 import { applyRealtimeEvent } from "./state";
-import type { QueryRow, RealtimeEvent, ResultCandidate } from "./types";
+import type {
+  AuthSession,
+  QueryRow,
+  RealtimeEvent,
+  ResultCandidate,
+} from "./types";
 
-export default function App() {
+interface Props {
+  authSession: AuthSession;
+  onLogout: () => void;
+}
+
+export default function App({ authSession, onLogout }: Props) {
   const [queries, setQueries] = useState<QueryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -220,6 +230,16 @@ export default function App() {
           <span className="brand-mark">AIC</span>
           <strong>Hệ thống nộp bài AIC 2026</strong>
         </a>
+        <div className="session-controls">
+          <span>
+            {authSession.client_type === "anonymous" ? "Không xác thực" : "UI"}
+          </span>
+          {authSession.authenticated && (
+            <button className="button secondary compact" onClick={onLogout}>
+              Đăng xuất
+            </button>
+          )}
+        </div>
       </header>
 
       <main id="main">

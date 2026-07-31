@@ -27,7 +27,6 @@ export function CandidateEditor({ query, candidate, onClose, onSaved }: Props) {
       : String(candidate?.img_id ?? ""),
   );
   const [answer, setAnswer] = useState(candidate?.answer ?? "");
-  const [submitter, setSubmitter] = useState(candidate?.submitter ?? "");
   const [note, setNote] = useState(candidate?.note ?? "");
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState("");
@@ -63,7 +62,7 @@ export function CandidateEditor({ query, candidate, onClose, onSaved }: Props) {
         const body: Record<string, unknown> = {
           ...common,
           file_name: query.file_name,
-          submitter,
+          submitter: "UI",
         };
         if (image) {
           body.image_base64 = await fileAsDataUrl(image);
@@ -131,16 +130,6 @@ export function CandidateEditor({ query, candidate, onClose, onSaved }: Props) {
               <textarea
                 value={answer}
                 onChange={(event) => setAnswer(event.target.value)}
-                required
-              />
-            </label>
-          )}
-          {!candidate && (
-            <label>
-              Người nộp
-              <input
-                value={submitter}
-                onChange={(event) => setSubmitter(event.target.value)}
                 required
               />
             </label>

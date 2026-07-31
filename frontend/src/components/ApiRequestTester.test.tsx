@@ -15,7 +15,7 @@ const response: ResultCandidate = {
   video_id: "L21_V001",
   img_id: 24834,
   answer: "Bình Định",
-  submitter: "UI Tester",
+  submitter: "UI",
   note: null,
   created_at: "2026-07-24T00:00:00Z",
   updated_at: "2026-07-24T00:00:00Z",
@@ -28,6 +28,7 @@ const response: ResultCandidate = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 describe("buildSubmissionPayload", () => {
@@ -73,6 +74,7 @@ describe("ApiRequestTester", () => {
       json: async () => response,
     } as Response);
     vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("submission-api-key", "ui-shared-secret");
     const onSubmitted = vi.fn();
 
     render(<ApiRequestTester onSubmitted={onSubmitted} />);
@@ -108,9 +110,12 @@ describe("ApiRequestTester", () => {
       img_id: 24834,
       video_id: "L21_V001",
       answer: "Bình Định",
-      submitter: "UI Tester",
+      submitter: "UI",
       image_base64: imageBase64,
     });
+    expect((init.headers as Record<string, string>)["X-API-Key"]).toBe(
+      "ui-shared-secret",
+    );
     await waitFor(() => expect(onSubmitted).toHaveBeenCalledWith(response));
     expect(screen.getByText("201 Created")).toBeInTheDocument();
     expect(screen.getByText(/priority #1/)).toBeInTheDocument();

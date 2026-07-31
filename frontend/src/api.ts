@@ -1,4 +1,5 @@
 import type {
+  AuthSession,
   ExportStatus,
   QueryRow,
   ResultCandidate,
@@ -6,6 +7,7 @@ import type {
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
+const API_KEY_STORAGE_KEY = "submission-api-key";
 
 export class ApiClientError extends Error {
   constructor(
@@ -17,16 +19,32 @@ export class ApiClientError extends Error {
   }
 }
 
-function authHeaders(): Record<string, string> {
-  const key = window.localStorage.getItem("submission-api-key");
+export function storedUiApiKey(): string | null {
+  return window.localStorage.getItem(API_KEY_STORAGE_KEY);
+}
+
+export function saveUiApiKey(key: string): void {
+  window.localStorage.setItem(API_KEY_STORAGE_KEY, key);
+}
+
+export function clearUiApiKey(): void {
+  window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+}
+
+function authHeaders(apiKey?: string | null): Record<string, string> {
+  const key = apiKey === undefined ? storedUiApiKey() : apiKey;
   return key ? { "X-API-Key": key } : {};
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  apiKey?: string | null,
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      ...authHeaders(),
+      ...authHeaders(apiKey),
       ...(init?.body instanceof FormData
         ? {}
         : { "Content-Type": "application/json" }),
@@ -77,6 +95,8 @@ function csvDownloadFilename(fileName: string): string {
 }
 
 export const api = {
+  authSession: (apiKey?: string | null) =>
+    request<AuthSession>("/auth/me", undefined, apiKey),
   listQueries: () => request<QueryRow[]>("/queries"),
   importQueries: (file: File) => {
     const data = new FormData();

@@ -35,12 +35,13 @@ services:
       context: ./backend
     environment:
       APP_ENV: ${APP_ENV:-development}
-      DATABASE_URL: mssql+pyodbc://sa:${MSSQL_SA_PASSWORD_URLENCODED:-Submission_Strong_Passw0rd%21}@db:1433/submission?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
+      DATABASE_URL: mssql+pyodbc://sa:${MSSQL_SA_PASSWORD_URLENCODED:-Submission_Strong_Passw0rd%21}@db:1433/submission?driver=ODBC+Driver+17+for+SQL+Server&TrustServerCertificate=yes
       STORAGE_ROOT: /data/storage
       CORS_ORIGINS: http://localhost:8080,http://localhost:5173
       AUTH_MODE: ${AUTH_MODE:-disabled}
-      API_KEYS_JSON: ${API_KEYS_JSON:-{}}
-      PERMISSION_MODE: ${PERMISSION_MODE:-owner_only}
+      SALAMANDERS_KEY: ${SALAMANDERS_KEY:-}
+      UI_SHARED_KEY: ${UI_SHARED_KEY:-}
+      PERMISSION_MODE: ${PERMISSION_MODE:-all_members}
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     depends_on:
       db-init:

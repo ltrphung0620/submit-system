@@ -11,6 +11,4 @@
 | P1 | What exact query ZIP layout and encoding are official? | Import compatibility | Recursive `.txt`, strict UTF-8/BOM |
 | P1 | May TRAKE span several videos? | API/data model | Current payload follows the PDF's single `video_id` |
 | P1 | Should duplicate candidates or retries be deduplicated? | Duplicate results | No semantic deduplication |
-| P1 | What authentication and cross-member edit/delete permissions are intended? | Access control | Configurable API keys; owner-only default |
 | P2 | May one candidate contain multiple images, and are images part of the submission ZIP? | Storage/export | One UI-only image; excluded from preview ZIP |
-

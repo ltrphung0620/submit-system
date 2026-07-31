@@ -22,7 +22,7 @@ const DEFAULT_DRAFT: SubmissionDraft = {
   videoId: "L21_V001",
   frames: "24834",
   answer: "Bình Định",
-  submitter: "UI Tester",
+  submitter: "UI",
   imageBase64: "",
 };
 
@@ -224,21 +224,6 @@ export function ApiRequestTester({ onSubmitted }: Props) {
               />
             </label>
           )}
-
-          <label className="wide-field">
-            <span>submitter</span>
-            <input
-              aria-label="submitter"
-              value={draft.submitter}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  submitter: event.target.value,
-                }))
-              }
-              required
-            />
-          </label>
 
           {error && (
             <p className="tester-error" role="alert">

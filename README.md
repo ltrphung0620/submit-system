@@ -139,17 +139,25 @@ Add `image_base64` and optionally `image_mime_type`. Raw base64 and data URLs ar
 }
 ```
 
-## API keys for five members
+## API keys for Salamanders and the shared UI
 
 Development defaults to `AUTH_MODE=disabled`. Production should use:
 
 ```dotenv
 AUTH_MODE=api_key
-API_KEYS_JSON={"random-secret-1":"Định","random-secret-2":"Member 2","random-secret-3":"Member 3","random-secret-4":"Member 4","random-secret-5":"Member 5"}
-PERMISSION_MODE=owner_only
+SALAMANDERS_KEY=<random-secret-used-only-by-the-salamanders-backend>
+UI_SHARED_KEY=<different-random-secret-entered-on-the-ui-login>
+PERMISSION_MODE=all_members
 ```
 
-Generate random secrets with an approved secret manager or `python -c "import secrets; print(secrets.token_urlsafe(32))"`; never commit them. Send `X-API-Key`. When enabled, body `submitter` must match the key owner; owner-only edit/delete is the default. API keys and base64 are never logged.
+Generate each secret independently with an approved secret manager or
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`; never commit
+them. Both clients send their own value as `X-API-Key`. The backend derives
+the stored source (`Salamanders` or `UI`) from the key and does not trust the
+body `submitter`. The shared UI key is validated by `/api/v1/auth/me`, saved in
+the browser's local storage after login, and removed on logout. `all_members`
+allows the review UI to edit results received from Salamanders. API keys and
+base64 are never logged.
 
 ## Realtime
 
@@ -204,7 +212,8 @@ Use SSMS: right-click the `submission` database, choose **Tasks → Back Up**, a
 ## Troubleshooting
 
 - **401:** set `X-API-Key` when `AUTH_MODE=api_key`.
-- **403 `SUBMITTER_MISMATCH`:** body submitter differs from API-key owner.
+- **UI login rejects the key:** only `UI_SHARED_KEY` is accepted by the UI;
+  `SALAMANDERS_KEY` is valid only for the Salamanders backend.
 - **409 `VERSION_CONFLICT`:** refetch and retry the intended edit against the latest version.
 - **409 official export:** expected until the P0 questions in `BLOCKERS.md` are resolved.
 - **413:** ZIP, extracted query data, request body, image, entry count, or compression ratio exceeded configuration.

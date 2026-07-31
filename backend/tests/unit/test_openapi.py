@@ -28,10 +28,11 @@ def test_swagger_and_openapi_expose_api_key_authorization() -> None:
     schema = schema_response.json()
     assert schema["components"]["securitySchemes"]["ApiKeyAuth"] == {
         "type": "apiKey",
-        "description": "API key configured in API_KEYS_JSON. Optional when AUTH_MODE=disabled.",
+        "description": "Salamanders or shared UI API key. Optional only when AUTH_MODE=disabled.",
         "in": "header",
         "name": "X-API-Key",
     }
+    assert {"ApiKeyAuth": []} in schema["paths"]["/api/v1/auth/me"]["get"]["security"]
     assert {"ApiKeyAuth": []} in schema["paths"]["/api/v1/results"]["post"]["security"]
     assert {"ApiKeyAuth": []} in schema["paths"]["/api/v1/submissions"]["post"]["security"]
     examples = schema["components"]["schemas"]["ResultCreate"]["examples"]

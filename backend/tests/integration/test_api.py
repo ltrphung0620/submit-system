@@ -283,13 +283,34 @@ def test_validation_auth_permissions_and_error_contract(client: TestClient, tmp_
         database_url=TEST_DATABASE_URL,
         storage_root=str(tmp_path),
         auth_mode="api_key",
-        api_keys_json='{"secret-a":"Định","secret-b":"Member 2"}',
-        permission_mode="owner_only",
+        salamanders_key="salamanders-secret",
+        ui_shared_key="ui-shared-secret",
+        permission_mode="all_members",
     )
     app.dependency_overrides[get_settings] = lambda: auth_settings
+
+    salamanders_session = client.get(
+        "/api/v1/auth/me",
+        headers={"X-API-Key": "salamanders-secret"},
+    )
+    assert salamanders_session.json() == {
+        "authenticated": True,
+        "client_type": "salamanders",
+        "actor": "Salamanders",
+    }
+    ui_session = client.get(
+        "/api/v1/auth/me",
+        headers={"X-API-Key": "ui-shared-secret"},
+    )
+    assert ui_session.json() == {
+        "authenticated": True,
+        "client_type": "ui",
+        "actor": "UI",
+    }
+
     imported = client.post(
         "/api/v1/query-sets/import",
-        headers={"X-API-Key": "secret-a"},
+        headers={"X-API-Key": "salamanders-secret"},
         files={"upload": ("synthetic.zip", synthetic_query_zip(), "application/zip")},
     )
     assert imported.status_code == 201
@@ -305,9 +326,9 @@ def test_validation_auth_permissions_and_error_contract(client: TestClient, tmp_
     )
     assert missing.status_code == 401
     assert set(missing.json()["error"]) >= {"code", "message", "field_errors", "request_id"}
-    mismatch = client.post(
+    created = client.post(
         "/api/v1/results",
-        headers={"X-API-Key": "secret-a"},
+        headers={"X-API-Key": "salamanders-secret"},
         json={
             "file_name": "query-p1-1-kis",
             "query_content": "Tìm khoảnh khắc KIS",
@@ -316,23 +337,14 @@ def test_validation_auth_permissions_and_error_contract(client: TestClient, tmp_
             "submitter": "Member 2",
         },
     )
-    assert mismatch.status_code == 403
-    created = client.post(
-        "/api/v1/results",
-        headers={"X-API-Key": "secret-a"},
-        json={
-            "file_name": "query-p1-1-kis",
-            "query_content": "Tìm khoảnh khắc KIS",
-            "img_id": 1,
-            "video_id": "v",
-            "submitter": "Định",
-        },
-    )
-    forbidden = client.delete(
+    assert created.status_code == 201
+    assert created.json()["submitter"] == "Salamanders"
+
+    deleted = client.delete(
         f"/api/v1/results/{created.json()['id']}?expected_version=1",
-        headers={"X-API-Key": "secret-b"},
+        headers={"X-API-Key": "ui-shared-secret"},
     )
-    assert forbidden.status_code == 403
+    assert deleted.status_code == 204
 
 
 def test_preview_export_roundtrip_and_official_block(imported_client: TestClient) -> None:
