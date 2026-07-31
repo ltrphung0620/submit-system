@@ -166,7 +166,9 @@ export function ApiRequestTester({ onSubmitted }: Props) {
               }
               placeholder="Chuỗi base64 thuần hoặc data:image/...;base64,..."
             />
-            <small>Tùy chọn · JPEG, PNG hoặc WebP, tối đa 5 MiB sau giải mã.</small>
+            <small>
+              Tùy chọn · JPEG, PNG hoặc WebP, tối đa 5 MiB sau giải mã.
+            </small>
           </label>
 
           <div className="tester-fields">

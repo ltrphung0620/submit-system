@@ -50,7 +50,7 @@ def migrate_once() -> None:
     config.set_main_option(
         "script_location", str(Path(__file__).resolve().parents[1] / "migrations")
     )
-    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
+    config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL.replace("%", "%%"))
     command.upgrade(config, "head")
     _migrated = True
 
