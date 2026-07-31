@@ -1,0 +1,228 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: production-iis
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy main to IIS
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - iis-production
+    environment: production
+    timeout-minutes: 30
+
+    steps:
+      - name: Download verified deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: submit-system-iis-${{ github.event.workflow_run.head_sha }}
+          path: ${{ runner.temp }}\submit-system-${{ github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Validate deployment configuration
+        shell: powershell
+        env:
+          DEPLOY_ROOT: ${{ vars.IIS_DEPLOY_ROOT }}
+          IIS_SITE_NAME: ${{ vars.IIS_SITE_NAME }}
+          IIS_APP_POOL: ${{ vars.IIS_APP_POOL }}
+          API_TASK_NAME: ${{ vars.API_TASK_NAME }}
+          PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          PYTHON_EXE: ${{ vars.PYTHON_EXE }}
+        run: |
+          $required = @{
+            IIS_DEPLOY_ROOT = $env:DEPLOY_ROOT
+            IIS_SITE_NAME = $env:IIS_SITE_NAME
+            IIS_APP_POOL = $env:IIS_APP_POOL
+            API_TASK_NAME = $env:API_TASK_NAME
+            PUBLIC_BASE_URL = $env:PUBLIC_BASE_URL
+            PYTHON_EXE = $env:PYTHON_EXE
+          }
+          $missing = @($required.GetEnumerator() | Where-Object {
+            [string]::IsNullOrWhiteSpace([string]$_.Value)
+          } | ForEach-Object { $_.Key })
+          if ($missing.Count -gt 0) {
+            throw "Missing GitHub environment variables: $($missing -join ', ')"
+          }
+          if (-not (Test-Path -LiteralPath $env:PYTHON_EXE -PathType Leaf)) {
+            throw "PYTHON_EXE does not exist: $env:PYTHON_EXE"
+          }
+          $sharedEnv = Join-Path $env:DEPLOY_ROOT 'shared\.env'
+          if (-not (Test-Path -LiteralPath $sharedEnv -PathType Leaf)) {
+            throw "Production environment file does not exist: $sharedEnv"
+          }
+
+      - name: Prepare versioned release
+        id: release
+        shell: powershell
+        env:
+          DEPLOY_ROOT: ${{ vars.IIS_DEPLOY_ROOT }}
+          PYTHON_EXE: ${{ vars.PYTHON_EXE }}
+          ARTIFACT_ROOT: ${{ runner.temp }}\submit-system-${{ github.run_id }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          $shortSha = $env:DEPLOY_SHA.Substring(0, 12)
+          $releaseName = "$(Get-Date -Format 'yyyyMMddHHmmss')-$shortSha-${{ github.run_id }}"
+          $releaseRoot = Join-Path $env:DEPLOY_ROOT "releases\$releaseName"
+          New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:ARTIFACT_ROOT 'backend') `
+            -Destination $releaseRoot -Recurse
+          Copy-Item -LiteralPath (Join-Path $env:ARTIFACT_ROOT 'web') `
+            -Destination $releaseRoot -Recurse
+          Copy-Item -LiteralPath (Join-Path $env:DEPLOY_ROOT 'shared\.env') `
+            -Destination (Join-Path $releaseRoot '.env')
+
+          & $env:PYTHON_EXE -m venv (Join-Path $releaseRoot '.venv')
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to create production virtual environment.' }
+          $releasePython = Join-Path $releaseRoot '.venv\Scripts\python.exe'
+          & $releasePython -m pip install --disable-pip-version-check `
+            -r (Join-Path $releaseRoot 'backend\requirements.lock')
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install locked backend dependencies.' }
+          & $releasePython -m pip install --disable-pip-version-check --no-deps `
+            (Join-Path $releaseRoot 'backend')
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to install the backend package.' }
+          & $releasePython -m pip check
+          if ($LASTEXITCODE -ne 0) { throw 'Production dependency check failed.' }
+
+          "release_root=$releaseRoot" >> $env:GITHUB_OUTPUT
+
+      - name: Migrate, activate, and verify release
+        shell: powershell
+        env:
+          DEPLOY_ROOT: ${{ vars.IIS_DEPLOY_ROOT }}
+          RELEASE_ROOT: ${{ steps.release.outputs.release_root }}
+          IIS_SITE_NAME: ${{ vars.IIS_SITE_NAME }}
+          IIS_APP_POOL: ${{ vars.IIS_APP_POOL }}
+          API_TASK_NAME: ${{ vars.API_TASK_NAME }}
+          PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+        run: |
+          Import-Module WebAdministration
+
+          $currentPath = Join-Path $env:DEPLOY_ROOT 'current'
+          $previousTarget = $null
+          if (Test-Path -LiteralPath $currentPath) {
+            $currentItem = Get-Item -LiteralPath $currentPath -Force
+            if (-not ($currentItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+              throw "Refusing to replace non-junction path: $currentPath"
+            }
+            $previousTarget = $currentItem.Target
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:DATABASE_URL)) {
+            throw 'Missing production secret PRODUCTION_MIGRATION_DATABASE_URL.'
+          }
+
+          $task = Get-ScheduledTask -TaskName $env:API_TASK_NAME -ErrorAction Stop
+          $appPoolPath = "IIS:\AppPools\$env:IIS_APP_POOL"
+          $sitePath = "IIS:\Sites\$env:IIS_SITE_NAME"
+          if (-not (Test-Path $appPoolPath)) {
+            throw "IIS application pool does not exist: $env:IIS_APP_POOL"
+          }
+          if (-not (Test-Path $sitePath)) {
+            throw "IIS site does not exist: $env:IIS_SITE_NAME"
+          }
+
+          $activated = $false
+          try {
+            Stop-ScheduledTask -InputObject $task
+            if ((Get-WebAppPoolState -Name $env:IIS_APP_POOL).Value -ne 'Stopped') {
+              Stop-WebAppPool -Name $env:IIS_APP_POOL
+            }
+
+            Push-Location (Join-Path $env:RELEASE_ROOT 'backend')
+            try {
+              $releasePython = Join-Path $env:RELEASE_ROOT '.venv\Scripts\python.exe'
+              & $releasePython -m alembic upgrade head
+              if ($LASTEXITCODE -ne 0) { throw 'Alembic migration failed.' }
+            }
+            finally {
+              Pop-Location
+            }
+
+            if (Test-Path -LiteralPath $currentPath) {
+              Remove-Item -LiteralPath $currentPath -Force
+            }
+            New-Item -ItemType Junction -Path $currentPath `
+              -Target $env:RELEASE_ROOT | Out-Null
+            $activated = $true
+
+            Start-ScheduledTask -TaskName $env:API_TASK_NAME
+            Start-WebAppPool -Name $env:IIS_APP_POOL
+
+            $healthUrl = "$($env:PUBLIC_BASE_URL.TrimEnd('/'))/api/v1/health/ready"
+            $healthy = $false
+            for ($attempt = 1; $attempt -le 30; $attempt++) {
+              try {
+                $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 5
+                if ($response.status -eq 'ready') {
+                  $healthy = $true
+                  break
+                }
+              }
+              catch {
+                Start-Sleep -Seconds 2
+              }
+            }
+            if (-not $healthy) {
+              throw "Release health check failed: $healthUrl"
+            }
+          }
+          catch {
+            $deploymentError = $_
+            Stop-ScheduledTask -TaskName $env:API_TASK_NAME -ErrorAction SilentlyContinue
+            Stop-WebAppPool -Name $env:IIS_APP_POOL -ErrorAction SilentlyContinue
+
+            if ($activated -and $previousTarget) {
+              if (Test-Path -LiteralPath $currentPath) {
+                Remove-Item -LiteralPath $currentPath -Force
+              }
+              New-Item -ItemType Junction -Path $currentPath `
+                -Target $previousTarget | Out-Null
+            }
+
+            if ($previousTarget) {
+              Start-ScheduledTask -TaskName $env:API_TASK_NAME
+              Start-WebAppPool -Name $env:IIS_APP_POOL
+            }
+            throw $deploymentError
+          }
+          finally {
+            Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+          }
+
+      - name: Write deployment summary
+        shell: powershell
+        env:
+          RELEASE_ROOT: ${{ steps.release.outputs.release_root }}
+          PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          @"
+          ## IIS production deployment
+
+          - Commit: ``$env:DEPLOY_SHA``
+          - Release: ``$env:RELEASE_ROOT``
+          - URL: $env:PUBLIC_BASE_URL
+          - Official Codabench export remains fail-closed.
+          "@ >> $env:GITHUB_STEP_SUMMARY
