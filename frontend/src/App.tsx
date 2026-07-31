@@ -39,7 +39,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const initialRefresh = window.setTimeout(() => {
+      void refresh();
+    }, 0);
+    return () => window.clearTimeout(initialRefresh);
   }, [refresh]);
 
   useEffect(() => {
