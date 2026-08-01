@@ -182,9 +182,17 @@ GET  /api/v1/exports/{id}/download
 
 `history.csv` contains every received submission record, including soft-deleted rows, in receive-time order. It is UTF-8 with BOM for Vietnamese-safe spreadsheet opening and is explicitly an **operational history file, not an official Codabench submission**.
 
-Preview output is UTF-8 internal CSV under `submission/`, contains every active structurally valid candidate in `arrival_seq` order, and is visibly marked `UNVERIFIED`. The builder reopens the ZIP, verifies exact entry paths, decodes every CSV, and parses every row before making it downloadable.
+Preview output is UTF-8 with BOM under `submission/`, contains every active structurally valid candidate in priority order, has no header row, and is visibly marked `UNVERIFIED`. KIS rows contain `video_id,img_id`; QA rows contain `video_id,img_id,answer`; TRAKE rows contain `video_id` plus a JSON array of ordered `img_id` values in the second CSV field. For example:
 
-Official output always returns HTTP 409 / `OFFICIAL_FORMAT_NOT_VERIFIED` until the exact per-type columns, header, encoding/BOM, filename mapping, row limits, selection policy, and accepted layout are supplied and automated golden tests are added. Preview output must not be submitted as an organizer-compatible archive.
+```csv
+L21_V001,24834
+L21_V001,24834,Bình Định
+L21_V001,"[24834,25230,25432]"
+```
+
+Each file contains rows for only one query type. The builder reopens the ZIP, verifies exact entry paths, decodes every CSV, checks the type-specific field count and validates every TRAKE array before making it downloadable.
+
+Official output always returns HTTP 409 / `OFFICIAL_FORMAT_NOT_VERIFIED` until the user-provided row format, encoding/BOM, filename mapping, row limits, selection policy, and complete archive layout are verified against an organizer-accepted fixture and automated golden tests are added. Preview output must not be submitted as an organizer-compatible archive.
 
 ## Quality commands
 

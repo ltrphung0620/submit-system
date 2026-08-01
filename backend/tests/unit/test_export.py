@@ -11,7 +11,7 @@ from app.errors import ApiError
 from app.models import Query, ResultCandidate
 from app.services.export import (
     HISTORY_COLUMNS,
-    PREVIEW_COLUMNS,
+    PREVIEW_COLUMNS_BY_TYPE,
     PreviewCsvExporter,
     QaCsvExporter,
     SubmissionHistoryCsvExporter,
@@ -64,17 +64,17 @@ def build_query() -> Query:
     return query
 
 
-def test_preview_csv_quotes_unicode_and_orders() -> None:
+def test_preview_qa_csv_has_no_header_quotes_unicode_and_orders() -> None:
     data = PreviewCsvExporter().serialize(build_query())
     assert data.startswith(b"\xef\xbb\xbf")
     assert b"\r\n" in data
     text = data.decode("utf-8-sig")
-    rows = list(csv.DictReader(io.StringIO(text)))
-    assert list(rows[0]) == PREVIEW_COLUMNS
-    assert [row["priority"] for row in rows] == ["1", "2"]
-    assert rows[0]["answer"] == "Bình Định"
-    assert rows[0]["submitter"] == "Định"
-    assert rows[1]["answer"] == 'dòng 1, "quoted"\ndòng 2'
+    rows = list(csv.reader(io.StringIO(text)))
+    assert rows[0] != list(PREVIEW_COLUMNS_BY_TYPE["qa"])
+    assert rows == [
+        ["L21_V001", "1", "Bình Định"],
+        ["L21_V001", "2", 'dòng 1, "quoted"\ndòng 2'],
+    ]
 
 
 def test_preview_csv_uses_mutable_priority_instead_of_arrival_sequence() -> None:
@@ -82,14 +82,40 @@ def test_preview_csv_uses_mutable_priority_instead_of_arrival_sequence() -> None
     query.results[0].priority = 1
     query.results[1].priority = 2
 
-    rows = list(
-        csv.DictReader(io.StringIO(PreviewCsvExporter().serialize(query).decode("utf-8-sig")))
-    )
+    rows = list(csv.reader(io.StringIO(PreviewCsvExporter().serialize(query).decode("utf-8-sig"))))
 
-    assert [row["priority"] for row in rows] == ["1", "2"]
-    assert [row["answer"] for row in rows] == [
+    assert [row[2] for row in rows] == [
         'dòng 1, "quoted"\ndòng 2',
         "Bình Định",
+    ]
+
+
+def test_preview_kis_and_trake_rows_have_type_specific_columns_without_headers() -> None:
+    kis = build_query()
+    kis.file_name = "query-p1-1-kis"
+    kis.file_name_key = kis.file_name
+    kis.query_type = "kis"
+    for result in kis.results:
+        result.answer = None
+    kis_rows = list(
+        csv.reader(io.StringIO(PreviewCsvExporter().serialize(kis).decode("utf-8-sig")))
+    )
+    assert kis_rows == [["L21_V001", "1"], ["L21_V001", "2"]]
+
+    trake = build_query()
+    trake.file_name = "query-p1-3-trake"
+    trake.file_name_key = trake.file_name
+    trake.query_type = "trake"
+    trake.results[0].frame_ids = [20, 21, 22]
+    trake.results[1].frame_ids = [10, 11]
+    for result in trake.results:
+        result.answer = None
+    trake_rows = list(
+        csv.reader(io.StringIO(PreviewCsvExporter().serialize(trake).decode("utf-8-sig")))
+    )
+    assert trake_rows == [
+        ["L21_V001", "[10,11]"],
+        ["L21_V001", "[20,21,22]"],
     ]
 
 
@@ -123,7 +149,8 @@ def test_zip_entry_name_determinism_and_self_validation() -> None:
         assert archive.namelist() == first.entries
         csv_data = archive.read(first.entries[0])
         assert csv_data.startswith(b"\xef\xbb\xbf")
-        assert "Bình Định" in csv_data.decode("utf-8-sig")
+        rows = list(csv.reader(io.StringIO(csv_data.decode("utf-8-sig"))))
+        assert rows[0] == ["L21_V001", "1", "Bình Định"]
 
 
 def test_safe_names_and_official_fail_closed() -> None:
@@ -177,16 +204,43 @@ def test_export_self_validation_rejects_corruption_and_unsafe_layout() -> None:
         SubmissionZipBuilder.validate_preview(unsafe, ["../escape.csv"])
     missing_bom = zip_with(
         "submission/a.csv",
-        b"file_name,query_type,priority,video_id,img_id,answer,submitter\r\n",
+        b"L21_V001,1\r\n",
     )
     with pytest.raises(ApiError, match="thiếu UTF-8 BOM"):
         SubmissionZipBuilder.validate_preview(missing_bom, ["submission/a.csv"])
     invalid_utf8 = zip_with("submission/a.csv", b"\xef\xbb\xbf\xff")
     with pytest.raises(ApiError, match="không đọc lại"):
         SubmissionZipBuilder.validate_preview(invalid_utf8, ["submission/a.csv"])
-    wrong_columns = zip_with("submission/a.csv", b"\xef\xbb\xbfwrong\r\nvalue\r\n")
+    header = zip_with(
+        "submission/a.csv",
+        b"\xef\xbb\xbfvideo_id,img_id\r\nL21_V001,1\r\n",
+    )
+    with pytest.raises(ApiError, match="không được có header"):
+        SubmissionZipBuilder.validate_preview(
+            header,
+            ["submission/a.csv"],
+            {"submission/a.csv": "kis"},
+        )
+    wrong_columns = zip_with(
+        "submission/a.csv",
+        b"\xef\xbb\xbfL21_V001,1,extra\r\n",
+    )
     with pytest.raises(ApiError, match="Cột preview sai"):
-        SubmissionZipBuilder.validate_preview(wrong_columns, ["submission/a.csv"])
+        SubmissionZipBuilder.validate_preview(
+            wrong_columns,
+            ["submission/a.csv"],
+            {"submission/a.csv": "kis"},
+        )
+    invalid_trake = zip_with(
+        "submission/a.csv",
+        b"\xef\xbb\xbfL21_V001,not-an-array\r\n",
+    )
+    with pytest.raises(ApiError, match="Mảng img_id TRAKE sai"):
+        SubmissionZipBuilder.validate_preview(
+            invalid_trake,
+            ["submission/a.csv"],
+            {"submission/a.csv": "trake"},
+        )
 
 
 def test_save_export_uses_opaque_id_under_storage_root(tmp_path: object) -> None:

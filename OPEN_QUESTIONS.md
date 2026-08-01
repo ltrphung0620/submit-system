@@ -2,8 +2,8 @@
 
 | Priority | Question | Impact | Proposed configurable default |
 |---|---|---|---|
-| P0 | What are the exact KIS, QA, and TRAKE CSV columns and column order? | Official export correctness | Official mode disabled |
-| P0 | Do CSVs have headers, which delimiter/quoting rules, and UTF-8 or UTF-8 BOM? | Byte compatibility and Vietnamese text | Preview uses header, comma, RFC 4180, UTF-8 |
+| P0 | Does an organizer-accepted fixture confirm the user-provided headerless KIS, QA, and TRAKE row layouts? | Official export correctness | Preview implements the supplied rows; official mode remains disabled |
+| P0 | Does the organizer require UTF-8 BOM or plain UTF-8? | Byte compatibility and Vietnamese text | Preview keeps UTF-8 BOM for Vietnamese-safe opening |
 | P0 | What exact CSV filename mapping and per-query row limit apply? | Archive acceptance | Preview sanitizes `file_name` to `<file_name>.csv` with no artificial row cap |
 | P0 | Which candidate(s) form the “final result”: first, selected, or all? | Submission semantics | Preview includes all active valid candidates by `arrival_seq` |
 | P0 | Are there archive entries beyond `submission/*.csv`? | Archive acceptance | Preview contains only CSVs under `submission/` |

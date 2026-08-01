@@ -364,10 +364,8 @@ def test_preview_export_roundtrip_and_official_block(imported_client: TestClient
     assert kis_csv_response.status_code == 200
     assert kis_csv_response.content.startswith(b"\xef\xbb\xbf")
     assert 'filename="query-p1-1-kis.csv"' in kis_csv_response.headers["content-disposition"]
-    kis_rows = list(csv.DictReader(io.StringIO(kis_csv_response.content.decode("utf-8-sig"))))
-    assert len(kis_rows) == 1
-    assert kis_rows[0]["file_name"] == "query-p1-1-kis"
-    assert kis_rows[0]["submitter"] == "Định"
+    kis_rows = list(csv.reader(io.StringIO(kis_csv_response.content.decode("utf-8-sig"))))
+    assert kis_rows == [["v", "2"]]
     response = client.post(
         "/api/v1/results",
         json={
@@ -395,8 +393,8 @@ def test_preview_export_roundtrip_and_official_block(imported_client: TestClient
         ]
         qa_data = archive.read("submission/query-p1-2-qa.csv")
         assert qa_data.startswith(b"\xef\xbb\xbf")
-        qa_csv = qa_data.decode("utf-8-sig")
-        assert "Bình Định, Việt Nam" in qa_csv
+        qa_rows = list(csv.reader(io.StringIO(qa_data.decode("utf-8-sig"))))
+        assert qa_rows == [["v", "1", "Bình Định, Việt Nam"]]
     official = client.post("/api/v1/exports/official")
     assert official.status_code == 409
     assert official.json()["error"]["code"] == "OFFICIAL_FORMAT_NOT_VERIFIED"
