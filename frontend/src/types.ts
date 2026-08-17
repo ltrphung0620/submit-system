@@ -1,6 +1,12 @@
 export type QueryType = "kis" | "qa" | "trake" | "unknown";
 export type SubmissionQueryType = Exclude<QueryType, "unknown">;
 
+export interface AuthSession {
+  authenticated: boolean;
+  client_type: "anonymous" | "salamanders" | "ui";
+  actor: string | null;
+}
+
 export interface SubmissionPayload {
   file_name: string;
   query_content: string;
@@ -53,7 +59,12 @@ export interface ExportStatus {
 
 export interface RealtimeEvent {
   schema_version: number;
-  event: "created" | "updated" | "deleted" | "query_set_imported";
+  event:
+    | "created"
+    | "updated"
+    | "deleted"
+    | "query_deleted"
+    | "query_set_imported";
   occurred_at: string;
   data:
     | ResultCandidate

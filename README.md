@@ -94,7 +94,7 @@ POST /api/v1/submissions
 
 `POST /api/v1/results` remains as a backward-compatible alias. A new `file_name` automatically creates a UI group and stores its required `query_content`; later requests with the same canonical name join that group in `arrival_seq` order. The query type is inferred from the required `-kis`, `-qa`, or `-trake` suffix. Query ZIP upload is optional and can enrich matching groups with query text.
 
-Until an external system is connected, use the **Gửi thử một request** panel on the web UI. It switches the form and JSON preview between KIS, QA, and TRAKE, accepts an optional `image_base64`, sends to the real `/api/v1/submissions` endpoint, and immediately shows the created result in the grouped feed below. The preview masks the base64 value instead of rendering the full image payload. Reuse the same `file_name` to test arrival ordering.
+Submit requests to `POST /api/v1/submissions`. Reuse the same `file_name` to test arrival ordering.
 
 ### Request examples
 
@@ -139,17 +139,25 @@ Add `image_base64` and optionally `image_mime_type`. Raw base64 and data URLs ar
 }
 ```
 
-## API keys for five members
+## API keys for Salamanders and the shared UI
 
 Development defaults to `AUTH_MODE=disabled`. Production should use:
 
 ```dotenv
 AUTH_MODE=api_key
-API_KEYS_JSON={"random-secret-1":"Định","random-secret-2":"Member 2","random-secret-3":"Member 3","random-secret-4":"Member 4","random-secret-5":"Member 5"}
-PERMISSION_MODE=owner_only
+SALAMANDERS_KEY=<random-secret-used-only-by-the-salamanders-backend>
+UI_SHARED_KEY=<different-random-secret-entered-on-the-ui-login>
+PERMISSION_MODE=all_members
 ```
 
-Generate random secrets with an approved secret manager or `python -c "import secrets; print(secrets.token_urlsafe(32))"`; never commit them. Send `X-API-Key`. When enabled, body `submitter` must match the key owner; owner-only edit/delete is the default. API keys and base64 are never logged.
+Generate each secret independently with an approved secret manager or
+`python -c "import secrets; print(secrets.token_urlsafe(32))"`; never commit
+them. Both clients send their own value as `X-API-Key`. The backend derives
+the stored source (`Salamanders` or `UI`) from the key and does not trust the
+body `submitter`. The shared UI key is validated by `/api/v1/auth/me`, saved in
+the browser's local storage after login, and removed on logout. `all_members`
+allows the review UI to edit results received from Salamanders. API keys and
+base64 are never logged.
 
 ## Realtime
 
@@ -174,9 +182,17 @@ GET  /api/v1/exports/{id}/download
 
 `history.csv` contains every received submission record, including soft-deleted rows, in receive-time order. It is UTF-8 with BOM for Vietnamese-safe spreadsheet opening and is explicitly an **operational history file, not an official Codabench submission**.
 
-Preview output is UTF-8 internal CSV under `submission/`, contains every active structurally valid candidate in `arrival_seq` order, and is visibly marked `UNVERIFIED`. The builder reopens the ZIP, verifies exact entry paths, decodes every CSV, and parses every row before making it downloadable.
+Preview output is UTF-8 with BOM under `submission/`, contains every active structurally valid candidate in priority order, has no header row, and is visibly marked `UNVERIFIED`. KIS rows contain `video_id,img_id`; QA rows contain `video_id,img_id,answer`; TRAKE rows contain `video_id` followed by each ordered `img_id` in its own CSV column. For example:
 
-Official output always returns HTTP 409 / `OFFICIAL_FORMAT_NOT_VERIFIED` until the exact per-type columns, header, encoding/BOM, filename mapping, row limits, selection policy, and accepted layout are supplied and automated golden tests are added. Preview output must not be submitted as an organizer-compatible archive.
+```csv
+L21_V001,24834
+L21_V001,24834,Bình Định
+L21_V001,24834,25230,25432
+```
+
+Each file contains rows for only one query type. The builder reopens the ZIP, verifies exact entry paths, decodes every CSV, checks the type-specific field count, and validates every TRAKE frame value before making it downloadable.
+
+Official output always returns HTTP 409 / `OFFICIAL_FORMAT_NOT_VERIFIED` until the user-provided row format, encoding/BOM, filename mapping, row limits, selection policy, and complete archive layout are verified against an organizer-accepted fixture and automated golden tests are added. Preview output must not be submitted as an organizer-compatible archive.
 
 ## Quality commands
 
@@ -204,7 +220,8 @@ Use SSMS: right-click the `submission` database, choose **Tasks → Back Up**, a
 ## Troubleshooting
 
 - **401:** set `X-API-Key` when `AUTH_MODE=api_key`.
-- **403 `SUBMITTER_MISMATCH`:** body submitter differs from API-key owner.
+- **UI login rejects the key:** only `UI_SHARED_KEY` is accepted by the UI;
+  `SALAMANDERS_KEY` is valid only for the Salamanders backend.
 - **409 `VERSION_CONFLICT`:** refetch and retry the intended edit against the latest version.
 - **409 official export:** expected until the P0 questions in `BLOCKERS.md` are resolved.
 - **413:** ZIP, extracted query data, request body, image, entry count, or compression ratio exceeded configuration.

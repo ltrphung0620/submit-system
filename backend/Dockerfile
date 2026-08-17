@@ -9,7 +9,7 @@ RUN apt-get update \
         | sed 's#signed-by=/usr/share/keyrings/microsoft-prod.gpg#signed-by=/usr/share/keyrings/microsoft-prod.gpg#' \
         > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 \
     && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml requirements.lock alembic.ini ./
 COPY app ./app

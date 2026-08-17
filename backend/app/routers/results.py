@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Response
@@ -21,7 +22,7 @@ from app.security import (
     require_submitter,
 )
 from app.serializers import result_read
-from app.services.images import LocalImageStorage, decode_image
+from app.services.images import DecodedImage, LocalImageStorage, decode_image
 from app.services.submissions import create_submission_query, find_submission_query
 from app.services.validation import (
     infer_query_type,
@@ -489,6 +490,89 @@ async def reorder_result_priorities(
 @router.get("/{result_id}", response_model=ResultRead)
 def get_result(result_id: str, db: Session = Depends(get_db)) -> ResultRead:
     return result_read(load_result(db, result_id))
+
+
+@router.post("/{result_id}/duplicate", status_code=201, response_model=ResultRead)
+async def duplicate_result(
+    result_id: str,
+    actor: Actor = Depends(get_actor),
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
+) -> ResultRead:
+    current = load_result(db, result_id)
+    acting_name = require_mutation_permission(actor, current.submitter, settings)
+    storage = LocalImageStorage(settings.storage_root)
+    stored_key: str | None = None
+    try:
+        next_value = db.execute(
+            update(Query)
+            .where(Query.id == current.query_id)
+            .values(next_arrival_seq=Query.next_arrival_seq + 1)
+            .returning(Query.next_arrival_seq)
+        ).scalar_one()
+        next_priority = (
+            db.scalar(
+                select(func.max(ResultCandidate.priority)).where(
+                    ResultCandidate.query_id == current.query_id,
+                    ResultCandidate.deleted_at.is_(None),
+                )
+            )
+            or 0
+        ) + 1
+        duplicate = ResultCandidate(
+            query_id=current.query_id,
+            arrival_seq=next_value - 1,
+            priority=next_priority,
+            video_id=current.video_id,
+            frame_ids=list(current.frame_ids),
+            answer=current.answer,
+            submitter=current.submitter,
+            note=current.note,
+        )
+        db.add(duplicate)
+        db.flush()
+        if current.image:
+            image_data = storage.read(current.image.storage_key)
+            cloned_image = DecodedImage(
+                data=image_data,
+                supplied_mime=current.image.original_mime_type,
+                detected_mime=current.image.detected_mime_type,
+                sha256=hashlib.sha256(image_data).hexdigest(),
+            )
+            stored_key = storage.save(cloned_image)
+            db.add(
+                ImageAttachment(
+                    result_candidate_id=duplicate.id,
+                    original_mime_type=cloned_image.supplied_mime,
+                    detected_mime_type=cloned_image.detected_mime,
+                    storage_key=stored_key,
+                    byte_size=len(cloned_image.data),
+                    sha256=cloned_image.sha256,
+                )
+            )
+        db.add(
+            AuditLog(
+                action="duplicated",
+                entity_type="result_candidate",
+                entity_id=duplicate.id,
+                actor=acting_name,
+                old_value={"source_result_id": current.id},
+                new_value={
+                    "query_id": duplicate.query_id,
+                    "arrival_seq": duplicate.arrival_seq,
+                    "priority": duplicate.priority,
+                },
+            )
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        if stored_key:
+            storage.delete(stored_key)
+        raise
+    response = result_read(load_result(db, duplicate.id))
+    await hub.publish("created", response.model_dump(mode="json"))
+    return response
 
 
 @router.patch("/{result_id}", response_model=ResultRead)

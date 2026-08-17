@@ -15,15 +15,11 @@ from typing import Protocol
 from app.errors import ApiError
 from app.models import Query, ResultCandidate
 
-PREVIEW_COLUMNS = [
-    "file_name",
-    "query_type",
-    "priority",
-    "video_id",
-    "img_id",
-    "answer",
-    "submitter",
-]
+PREVIEW_COLUMNS_BY_TYPE: dict[str, tuple[str, ...]] = {
+    "kis": ("video_id", "img_id"),
+    "qa": ("video_id", "img_id", "answer"),
+    "trake": ("video_id", "img_id_1", "..."),
+}
 HISTORY_COLUMNS = [
     "received_at",
     "file_name",
@@ -60,8 +56,8 @@ class UnverifiedOfficialFormatProvider:
             "Chưa thể xác minh định dạng submission chính thức",
             details={
                 "missing": [
-                    "KIS/QA/TRAKE columns",
-                    "header and encoding",
+                    "organizer verification of the user-provided KIS/QA/TRAKE rows",
+                    "encoding and BOM confirmation",
                     "filename mapping",
                     "candidate selection policy",
                     "official accepted fixture",
@@ -115,25 +111,22 @@ class ExportSelectionPolicy:
 
 class PreviewCsvExporter:
     def serialize(self, query: Query) -> bytes:
-        output = io.StringIO(newline="")
-        writer = csv.DictWriter(output, fieldnames=PREVIEW_COLUMNS, lineterminator="\r\n")
-        writer.writeheader()
-        for result in ExportSelectionPolicy.select(query):
-            writer.writerow(
-                {
-                    "file_name": query.file_name,
-                    "query_type": query.query_type,
-                    "priority": result.priority,
-                    "video_id": result.video_id,
-                    "img_id": json.dumps(
-                        result.frame_ids, ensure_ascii=False, separators=(",", ":")
-                    )
-                    if query.query_type == "trake"
-                    else result.frame_ids[0],
-                    "answer": result.answer or "",
-                    "submitter": result.submitter,
-                }
+        if query.query_type not in PREVIEW_COLUMNS_BY_TYPE:
+            raise ApiError(
+                422,
+                "EXPORT_QUERY_TYPE_UNSUPPORTED",
+                "Preview CSV chỉ hỗ trợ KIS, QA hoặc TRAKE",
             )
+        output = io.StringIO(newline="")
+        writer = csv.writer(output, lineterminator="\r\n")
+        for result in ExportSelectionPolicy.select(query):
+            if query.query_type == "kis":
+                row: tuple[object, ...] = (result.video_id, result.frame_ids[0])
+            elif query.query_type == "qa":
+                row = (result.video_id, result.frame_ids[0], result.answer or "")
+            else:
+                row = (result.video_id, *result.frame_ids)
+            writer.writerow(row)
         return output.getvalue().encode("utf-8-sig")
 
 
@@ -206,6 +199,7 @@ class SubmissionZipBuilder:
     def build_preview(self, queries: list[Query]) -> BuiltExport:
         stream = io.BytesIO()
         entries: list[str] = []
+        entry_query_types: dict[str, str] = {}
         seen_entries: set[str] = set()
         with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for query in sorted(queries, key=lambda item: item.display_order):
@@ -222,12 +216,17 @@ class SubmissionZipBuilder:
                 info.external_attr = 0o600 << 16
                 archive.writestr(info, self.exporter.serialize(query))
                 entries.append(entry)
+                entry_query_types[entry] = query.query_type
         data = stream.getvalue()
-        self.validate_preview(data, entries)
+        self.validate_preview(data, entries, entry_query_types)
         return BuiltExport(data, hashlib.sha256(data).hexdigest(), entries)
 
     @staticmethod
-    def validate_preview(data: bytes, expected_entries: list[str]) -> None:
+    def validate_preview(
+        data: bytes,
+        expected_entries: list[str],
+        expected_query_types: dict[str, str] | None = None,
+    ) -> None:
         try:
             archive = zipfile.ZipFile(io.BytesIO(data))
         except zipfile.BadZipFile as exc:
@@ -250,12 +249,52 @@ class SubmissionZipBuilder:
                             f"CSV thiếu UTF-8 BOM: {entry}",
                         )
                     text = payload.decode("utf-8-sig", errors="strict")
-                    rows = list(csv.DictReader(io.StringIO(text)))
+                    rows = list(csv.reader(io.StringIO(text)))
                 except (UnicodeDecodeError, csv.Error) as exc:
                     raise ApiError(
                         500, "EXPORT_CSV_INVALID", f"CSV không đọc lại được: {entry}"
                     ) from exc
-                if rows and list(rows[0].keys()) != PREVIEW_COLUMNS:
+                if expected_query_types is None:
+                    continue
+                query_type = expected_query_types.get(entry)
+                columns = PREVIEW_COLUMNS_BY_TYPE.get(query_type or "")
+                if columns is None:
+                    raise ApiError(
+                        500,
+                        "EXPORT_QUERY_TYPE_INVALID",
+                        f"Loại query preview sai: {entry}",
+                    )
+                if not rows:
+                    raise ApiError(500, "EXPORT_CSV_EMPTY", f"CSV preview rỗng: {entry}")
+                if rows[0] == list(columns):
+                    raise ApiError(
+                        500,
+                        "EXPORT_HEADER_PRESENT",
+                        f"CSV preview không được có header: {entry}",
+                    )
+                if query_type == "trake":
+                    for row in rows:
+                        if len(row) < 2:
+                            raise ApiError(
+                                500,
+                                "EXPORT_TRAKE_FRAME_INVALID",
+                                f"Frame TRAKE sai: {entry}",
+                            )
+                        try:
+                            frame_ids = [int(frame_id) for frame_id in row[1:]]
+                        except ValueError as exc:
+                            raise ApiError(
+                                500,
+                                "EXPORT_TRAKE_FRAME_INVALID",
+                                f"Frame TRAKE sai: {entry}",
+                            ) from exc
+                        if any(frame_id < 0 for frame_id in frame_ids):
+                            raise ApiError(
+                                500,
+                                "EXPORT_TRAKE_FRAME_INVALID",
+                                f"Frame TRAKE sai: {entry}",
+                            )
+                elif any(len(row) != len(columns) for row in rows):
                     raise ApiError(500, "EXPORT_COLUMNS_INVALID", f"Cột preview sai: {entry}")
 
 
