@@ -26,10 +26,20 @@ export function ConfirmDialog({
         <h2 id="confirmation-title">{title}</h2>
         <p id="confirmation-message">{message}</p>
         <div className="modal-actions">
-          <button className="button secondary" type="button" onClick={onCancel} disabled={confirming}>
+          <button
+            className="button secondary"
+            type="button"
+            onClick={onCancel}
+            disabled={confirming}
+          >
             Hủy
           </button>
-          <button className="button danger-button" type="button" onClick={onConfirm} disabled={confirming}>
+          <button
+            className="button danger-button"
+            type="button"
+            onClick={onConfirm}
+            disabled={confirming}
+          >
             {confirming ? "Đang xóa…" : "Xóa"}
           </button>
         </div>

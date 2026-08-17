@@ -33,12 +33,17 @@ export default function App({ authSession, onLogout }: Props) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [submitterFilter, setSubmitterFilter] = useState("all");
   const [exporting, setExporting] = useState(false);
-  const [exportWarnings, setExportWarnings] = useState<ExportWarning[] | null>(null);
+  const [exportWarnings, setExportWarnings] = useState<ExportWarning[] | null>(
+    null,
+  );
   const [deletingAllQueries, setDeletingAllQueries] = useState(false);
   const [exportingQueryId, setExportingQueryId] = useState<string | null>(null);
   const [swappingResultIds, setSwappingResultIds] = useState<string[]>([]);
-  const [duplicatingResultIds, setDuplicatingResultIds] = useState<string[]>([]);
-  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
+  const [duplicatingResultIds, setDuplicatingResultIds] = useState<string[]>(
+    [],
+  );
+  const [pendingDeletion, setPendingDeletion] =
+    useState<PendingDeletion | null>(null);
   const [confirmingDeletion, setConfirmingDeletion] = useState(false);
   const [editing, setEditing] = useState<{
     query: QueryRow;
@@ -166,7 +171,11 @@ export default function App({ authSession, onLogout }: Props) {
       );
       setError("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể duplicate candidate");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Không thể duplicate candidate",
+      );
     } finally {
       setDuplicatingResultIds((current) =>
         current.filter((resultId) => resultId !== candidate.id),
@@ -180,7 +189,9 @@ export default function App({ authSession, onLogout }: Props) {
       setQueries((current) => current.filter((item) => item.id !== query.id));
       setError("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể xóa query");
+      setError(
+        reason instanceof Error ? reason.message : "Không thể xóa query",
+      );
     }
   }
 
@@ -191,7 +202,11 @@ export default function App({ authSession, onLogout }: Props) {
       setQueries([]);
       setError("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể xóa toàn bộ query");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Không thể xóa toàn bộ query",
+      );
     } finally {
       setDeletingAllQueries(false);
     }
@@ -404,9 +419,7 @@ export default function App({ authSession, onLogout }: Props) {
           ) : queries.length === 0 ? (
             <div className="state-card">
               <b>Chưa có query nào</b>
-              <p>
-                Nạp file ZIP chứa query .txt để tạo các khung nộp bài.
-              </p>
+              <p>Nạp file ZIP chứa query .txt để tạo các khung nộp bài.</p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="state-card">
@@ -421,12 +434,18 @@ export default function App({ authSession, onLogout }: Props) {
                   index={index + 1}
                   query={query}
                   onAddCandidate={(value) => setEditing({ query: value })}
-                  onDeleteQuery={(value) => setPendingDeletion({ kind: "query", query: value })}
+                  onDeleteQuery={(value) =>
+                    setPendingDeletion({ kind: "query", query: value })
+                  }
                   onEdit={(value, candidate) =>
                     setEditing({ query: value, candidate })
                   }
-                  onDelete={(candidate) => setPendingDeletion({ kind: "candidate", candidate })}
-                  onDuplicate={(candidate) => void duplicateCandidate(candidate)}
+                  onDelete={(candidate) =>
+                    setPendingDeletion({ kind: "candidate", candidate })
+                  }
+                  onDuplicate={(candidate) =>
+                    void duplicateCandidate(candidate)
+                  }
                   onExport={(value) => void downloadQueryCsv(value)}
                   exporting={exportingQueryId === query.id}
                   onSwap={(first, second) => void swapPriorities(first, second)}

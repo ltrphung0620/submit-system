@@ -122,9 +122,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
   duplicateResult: (resultId: string) =>
-    request<ResultCandidate>(`/results/${encodeURIComponent(resultId)}/duplicate`, {
-      method: "POST",
-    }),
+    request<ResultCandidate>(
+      `/results/${encodeURIComponent(resultId)}/duplicate`,
+      {
+        method: "POST",
+      },
+    ),
   updateResult: (id: string, body: Record<string, unknown>) =>
     request<ResultCandidate>(`/results/${id}`, {
       method: "PATCH",

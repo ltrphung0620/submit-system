@@ -29,7 +29,9 @@ export function QueryZipUploader({ onImported }: Props) {
       await onImported(imported.query_count);
       setStatus(`Đã nạp ${imported.query_count} query từ ${file.name}.`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Không thể nạp file ZIP.");
+      setError(
+        reason instanceof Error ? reason.message : "Không thể nạp file ZIP.",
+      );
     } finally {
       setImporting(false);
     }
@@ -45,12 +47,23 @@ export function QueryZipUploader({ onImported }: Props) {
         onChange={upload}
         disabled={importing}
       />
-      <label className="button secondary upload-trigger" htmlFor="query-zip-upload">
+      <label
+        className="button secondary upload-trigger"
+        htmlFor="query-zip-upload"
+      >
         {importing ? "Đang nạp ZIP…" : "Nạp query ZIP"}
       </label>
       <p className="upload-help">Chọn file ZIP chứa các file query `.txt`.</p>
-      {error && <p className="upload-error" role="alert">{error}</p>}
-      {status && <p className="upload-success" role="status">{status}</p>}
+      {error && (
+        <p className="upload-error" role="alert">
+          {error}
+        </p>
+      )}
+      {status && (
+        <p className="upload-success" role="status">
+          {status}
+        </p>
+      )}
     </div>
   );
 }

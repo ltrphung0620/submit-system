@@ -45,7 +45,10 @@ describe("collectExportWarnings", () => {
         content: "Câu hỏi khác",
         display_order: 2,
         source_path: "query-noted-kis.txt",
-        results: [candidate(1, "Kiểm tra lại frame"), candidate(2, "Cần xác minh video")],
+        results: [
+          candidate(1, "Kiểm tra lại frame"),
+          candidate(2, "Cần xác minh video"),
+        ],
       },
     ];
 

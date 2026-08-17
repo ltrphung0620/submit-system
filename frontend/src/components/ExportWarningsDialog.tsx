@@ -57,7 +57,11 @@ export function ExportWarningsDialog({
             {canContinue ? "Hủy" : "Đóng"}
           </button>
           {canContinue && (
-            <button className="button primary" type="button" onClick={onContinue}>
+            <button
+              className="button primary"
+              type="button"
+              onClick={onContinue}
+            >
               Vẫn xuất ZIP
             </button>
           )}

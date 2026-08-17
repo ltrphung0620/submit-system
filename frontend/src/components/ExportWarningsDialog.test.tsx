@@ -21,8 +21,12 @@ describe("ExportWarningsDialog", () => {
       />,
     );
 
-    expect(screen.getByRole("columnheader", { name: "Tên query" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Lưu ý" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Tên query" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Lưu ý" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Chưa có đáp án")).toBeInTheDocument();
     expect(screen.getByRole("list")).toHaveTextContent("Ghi chú 1");
     expect(screen.getByRole("list")).toHaveTextContent("Ghi chú 2");

@@ -82,7 +82,9 @@ describe("QueryCard", () => {
     expect(onExport).toHaveBeenCalledWith(query);
     fireEvent.click(screen.getByRole("button", { name: "Thêm candidate" }));
     expect(onAddCandidate).toHaveBeenCalledWith(query);
-    fireEvent.click(screen.getByRole("button", { name: "Xóa query query-1-qa" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Xóa query query-1-qa" }),
+    );
     expect(onDeleteQuery).toHaveBeenCalledWith(query);
     fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
     expect(onDuplicate).toHaveBeenCalledWith(query.results[0]);
