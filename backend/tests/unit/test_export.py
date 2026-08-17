@@ -114,8 +114,8 @@ def test_preview_kis_and_trake_rows_have_type_specific_columns_without_headers()
         csv.reader(io.StringIO(PreviewCsvExporter().serialize(trake).decode("utf-8-sig")))
     )
     assert trake_rows == [
-        ["L21_V001", "[10,11]"],
-        ["L21_V001", "[20,21,22]"],
+        ["L21_V001", "10", "11"],
+        ["L21_V001", "20", "21", "22"],
     ]
 
 
@@ -233,9 +233,9 @@ def test_export_self_validation_rejects_corruption_and_unsafe_layout() -> None:
         )
     invalid_trake = zip_with(
         "submission/a.csv",
-        b"\xef\xbb\xbfL21_V001,not-an-array\r\n",
+        b"\xef\xbb\xbfL21_V001,not-a-frame\r\n",
     )
-    with pytest.raises(ApiError, match="Mảng img_id TRAKE sai"):
+    with pytest.raises(ApiError, match="Frame TRAKE sai"):
         SubmissionZipBuilder.validate_preview(
             invalid_trake,
             ["submission/a.csv"],

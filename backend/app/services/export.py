@@ -18,7 +18,7 @@ from app.models import Query, ResultCandidate
 PREVIEW_COLUMNS_BY_TYPE: dict[str, tuple[str, ...]] = {
     "kis": ("video_id", "img_id"),
     "qa": ("video_id", "img_id", "answer"),
-    "trake": ("video_id", "img_ids"),
+    "trake": ("video_id", "img_id_1", "..."),
 }
 HISTORY_COLUMNS = [
     "received_at",
@@ -125,10 +125,7 @@ class PreviewCsvExporter:
             elif query.query_type == "qa":
                 row = (result.video_id, result.frame_ids[0], result.answer or "")
             else:
-                row = (
-                    result.video_id,
-                    json.dumps(result.frame_ids, ensure_ascii=False, separators=(",", ":")),
-                )
+                row = (result.video_id, *result.frame_ids)
             writer.writerow(row)
         return output.getvalue().encode("utf-8-sig")
 
@@ -275,33 +272,30 @@ class SubmissionZipBuilder:
                         "EXPORT_HEADER_PRESENT",
                         f"CSV preview không được có header: {entry}",
                     )
-                if any(len(row) != len(columns) for row in rows):
-                    raise ApiError(500, "EXPORT_COLUMNS_INVALID", f"Cột preview sai: {entry}")
                 if query_type == "trake":
                     for row in rows:
+                        if len(row) < 2:
+                            raise ApiError(
+                                500,
+                                "EXPORT_TRAKE_FRAME_INVALID",
+                                f"Frame TRAKE sai: {entry}",
+                            )
                         try:
-                            frame_ids = json.loads(row[1])
-                        except json.JSONDecodeError as exc:
+                            frame_ids = [int(frame_id) for frame_id in row[1:]]
+                        except ValueError as exc:
                             raise ApiError(
                                 500,
-                                "EXPORT_TRAKE_ARRAY_INVALID",
-                                f"Mảng img_id TRAKE sai: {entry}",
+                                "EXPORT_TRAKE_FRAME_INVALID",
+                                f"Frame TRAKE sai: {entry}",
                             ) from exc
-                        if (
-                            not isinstance(frame_ids, list)
-                            or not frame_ids
-                            or not all(
-                                isinstance(frame_id, int)
-                                and not isinstance(frame_id, bool)
-                                and frame_id >= 0
-                                for frame_id in frame_ids
-                            )
-                        ):
+                        if any(frame_id < 0 for frame_id in frame_ids):
                             raise ApiError(
                                 500,
-                                "EXPORT_TRAKE_ARRAY_INVALID",
-                                f"Mảng img_id TRAKE sai: {entry}",
+                                "EXPORT_TRAKE_FRAME_INVALID",
+                                f"Frame TRAKE sai: {entry}",
                             )
+                elif any(len(row) != len(columns) for row in rows):
+                    raise ApiError(500, "EXPORT_COLUMNS_INVALID", f"Cột preview sai: {entry}")
 
 
 def save_export(root: str, export_id: str, data: bytes) -> str:

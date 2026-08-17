@@ -59,7 +59,12 @@ export interface ExportStatus {
 
 export interface RealtimeEvent {
   schema_version: number;
-  event: "created" | "updated" | "deleted" | "query_set_imported";
+  event:
+    | "created"
+    | "updated"
+    | "deleted"
+    | "query_deleted"
+    | "query_set_imported";
   occurred_at: string;
   data:
     | ResultCandidate

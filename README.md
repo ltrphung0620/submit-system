@@ -94,7 +94,7 @@ POST /api/v1/submissions
 
 `POST /api/v1/results` remains as a backward-compatible alias. A new `file_name` automatically creates a UI group and stores its required `query_content`; later requests with the same canonical name join that group in `arrival_seq` order. The query type is inferred from the required `-kis`, `-qa`, or `-trake` suffix. Query ZIP upload is optional and can enrich matching groups with query text.
 
-Until an external system is connected, use the **Gửi thử một request** panel on the web UI. It switches the form and JSON preview between KIS, QA, and TRAKE, accepts an optional `image_base64`, sends to the real `/api/v1/submissions` endpoint, and immediately shows the created result in the grouped feed below. The preview masks the base64 value instead of rendering the full image payload. Reuse the same `file_name` to test arrival ordering.
+Submit requests to `POST /api/v1/submissions`. Reuse the same `file_name` to test arrival ordering.
 
 ### Request examples
 
@@ -182,15 +182,15 @@ GET  /api/v1/exports/{id}/download
 
 `history.csv` contains every received submission record, including soft-deleted rows, in receive-time order. It is UTF-8 with BOM for Vietnamese-safe spreadsheet opening and is explicitly an **operational history file, not an official Codabench submission**.
 
-Preview output is UTF-8 with BOM under `submission/`, contains every active structurally valid candidate in priority order, has no header row, and is visibly marked `UNVERIFIED`. KIS rows contain `video_id,img_id`; QA rows contain `video_id,img_id,answer`; TRAKE rows contain `video_id` plus a JSON array of ordered `img_id` values in the second CSV field. For example:
+Preview output is UTF-8 with BOM under `submission/`, contains every active structurally valid candidate in priority order, has no header row, and is visibly marked `UNVERIFIED`. KIS rows contain `video_id,img_id`; QA rows contain `video_id,img_id,answer`; TRAKE rows contain `video_id` followed by each ordered `img_id` in its own CSV column. For example:
 
 ```csv
 L21_V001,24834
 L21_V001,24834,Bình Định
-L21_V001,"[24834,25230,25432]"
+L21_V001,24834,25230,25432
 ```
 
-Each file contains rows for only one query type. The builder reopens the ZIP, verifies exact entry paths, decodes every CSV, checks the type-specific field count and validates every TRAKE array before making it downloadable.
+Each file contains rows for only one query type. The builder reopens the ZIP, verifies exact entry paths, decodes every CSV, checks the type-specific field count, and validates every TRAKE frame value before making it downloadable.
 
 Official output always returns HTTP 409 / `OFFICIAL_FORMAT_NOT_VERIFIED` until the user-provided row format, encoding/BOM, filename mapping, row limits, selection policy, and complete archive layout are verified against an organizer-accepted fixture and automated golden tests are added. Preview output must not be submitted as an organizer-compatible archive.
 

@@ -6,31 +6,37 @@ import type { QueryRow, ResultCandidate } from "../types";
 interface Props {
   index: number;
   query: QueryRow;
+  onAddCandidate: (query: QueryRow) => void;
+  onDeleteQuery: (query: QueryRow) => void;
   onEdit: (query: QueryRow, result: ResultCandidate) => void;
   onDelete: (result: ResultCandidate) => void;
+  onDuplicate: (result: ResultCandidate) => void;
   onExport: (query: QueryRow) => void;
   exporting: boolean;
   onSwap: (first: ResultCandidate, second: ResultCandidate) => void;
   onReorder: (query: QueryRow, orderedResults: ResultCandidate[]) => void;
   swappingResultIds: string[];
+  duplicatingResultIds: string[];
 }
 
 export function QueryCard({
   index,
   query,
+  onAddCandidate,
+  onDeleteQuery,
   onEdit,
   onDelete,
+  onDuplicate,
   onExport,
   exporting,
   onSwap,
   onReorder,
   swappingResultIds,
+  duplicatingResultIds,
 }: Props) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragTargetId, setDragTargetId] = useState<string | null>(null);
   const candidateListRef = useRef<HTMLDivElement>(null);
-  if (query.results.length === 0) return null;
-
   function clearDragState() {
     setDraggedId(null);
     setDragTargetId(null);
@@ -79,16 +85,51 @@ export function QueryCard({
         </span>
         <h2>{query.file_name}</h2>
         <p>{query.content}</p>
-        <button
-          className="button compact"
-          onClick={() => onExport(query)}
-          disabled={exporting}
-        >
-          {exporting ? "Đang xuất…" : "Xuất CSV"}
-        </button>
+        <div className="query-actions">
+          <button
+            className="button compact"
+            onClick={() => onExport(query)}
+            disabled={exporting}
+          >
+            {exporting ? "Đang xuất…" : "Xuất CSV"}
+          </button>
+          <button
+            className="button primary compact"
+            onClick={() => onAddCandidate(query)}
+          >
+            Thêm candidate
+          </button>
+          <button
+            className="icon-text-button danger"
+            onClick={() => onDeleteQuery(query)}
+            aria-label={`Xóa query ${query.file_name}`}
+            title="Xóa query"
+          >
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 6h18" />
+              <path d="M8 6V4h8v2" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v5M14 11v5" />
+            </svg>
+          </button>
+        </div>
       </div>
       <div className="candidate-list" ref={candidateListRef}>
-        {query.results.map((result, resultIndex) => (
+        {query.results.length === 0 ? (
+          <div className="empty-candidate">
+            <b>Chưa có candidate</b>
+            <p>Thêm kết quả đầu tiên cho query này.</p>
+          </div>
+        ) : (
+          query.results.map((result, resultIndex) => (
           <section
             className={`candidate${draggedId === result.id ? " dragging" : ""}${
               dragTargetId === result.id && draggedId !== result.id
@@ -108,7 +149,7 @@ export function QueryCard({
             title="Giữ và kéo card đến vị trí priority mong muốn"
           >
             <div className="candidate-priority">
-              <b>Priority #{result.priority}</b>
+              <b>#{result.priority}</b>
               <span className="drag-hint" aria-hidden="true">
                 ⠿ Kéo
               </span>
@@ -179,20 +220,43 @@ export function QueryCard({
               <div className="row-actions">
                 <button
                   className="text-button"
+                  onClick={() => onDuplicate(result)}
+                  disabled={duplicatingResultIds.includes(result.id)}
+                >
+                  {duplicatingResultIds.includes(result.id) ? "Đang duplicate…" : "Duplicate"}
+                </button>
+                <button
+                  className="text-button"
                   onClick={() => onEdit(query, result)}
                 >
                   Sửa
                 </button>
                 <button
-                  className="text-button danger"
+                  className="icon-text-button danger"
                   onClick={() => onDelete(result)}
+                  aria-label={`Xóa candidate priority ${result.priority}`}
+                  title="Xóa candidate"
                 >
-                  Xóa
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v5M14 11v5" />
+                  </svg>
                 </button>
               </div>
             </div>
           </section>
-        ))}
+          ))
+        )}
       </div>
     </article>
   );

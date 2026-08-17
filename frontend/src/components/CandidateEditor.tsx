@@ -62,6 +62,7 @@ export function CandidateEditor({ query, candidate, onClose, onSaved }: Props) {
         const body: Record<string, unknown> = {
           ...common,
           file_name: query.file_name,
+          query_content: query.content,
           submitter: "UI",
         };
         if (image) {

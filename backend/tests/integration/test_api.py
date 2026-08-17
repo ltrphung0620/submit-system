@@ -100,6 +100,78 @@ def test_import_queries_natural_order_unknown_and_transactional_rollback(
     assert sets[0]["is_active"] is True
 
 
+def test_delete_query_removes_the_query_and_its_candidates(client: TestClient) -> None:
+    imported = client.post(
+        "/api/v1/query-sets/import",
+        files={
+            "upload": (
+                "synthetic.zip",
+                synthetic_query_zip({"query-p1-1-kis.txt": "Tìm xe buýt"}),
+                "application/zip",
+            )
+        },
+    )
+    assert imported.status_code == 201
+    query_id = client.get("/api/v1/queries").json()[0]["id"]
+    candidate = client.post(
+        "/api/v1/results",
+        json={
+            "file_name": "query-p1-1-kis",
+            "query_content": "Tìm xe buýt",
+            "img_id": 1,
+            "video_id": "L21_V001",
+            "submitter": "UI",
+        },
+    )
+    assert candidate.status_code == 201
+
+    deleted = client.delete(f"/api/v1/queries/{query_id}")
+
+    assert deleted.status_code == 204
+    assert client.get("/api/v1/queries").json() == []
+    assert client.get(f"/api/v1/queries/{query_id}").status_code == 404
+    assert client.get(f"/api/v1/queries/{query_id}/results").status_code == 404
+
+
+def test_delete_all_queries_clears_the_active_query_set(client: TestClient) -> None:
+    imported = client.post(
+        "/api/v1/query-sets/import",
+        files={"upload": ("synthetic.zip", synthetic_query_zip(), "application/zip")},
+    )
+    assert imported.status_code == 201
+    assert len(client.get("/api/v1/queries").json()) == 3
+
+    deleted = client.delete("/api/v1/queries")
+
+    assert deleted.status_code == 204
+    assert client.get("/api/v1/queries").json() == []
+
+
+def test_duplicate_result_adds_a_new_candidate_with_the_next_priority(
+    imported_client: TestClient,
+) -> None:
+    source = imported_client.post(
+        "/api/v1/results",
+        json={
+            "file_name": "query-p1-1-kis",
+            "query_content": "Tìm xe buýt màu xanh",
+            "img_id": 24834,
+            "video_id": "L21_V001",
+            "submitter": "UI",
+        },
+    )
+    assert source.status_code == 201
+
+    duplicated = imported_client.post(f"/api/v1/results/{source.json()['id']}/duplicate")
+
+    assert duplicated.status_code == 201
+    assert duplicated.json()["id"] != source.json()["id"]
+    assert duplicated.json()["arrival_seq"] == 2
+    assert duplicated.json()["priority"] == 2
+    assert duplicated.json()["video_id"] == source.json()["video_id"]
+    assert duplicated.json()["img_id"] == source.json()["img_id"]
+
+
 def test_kis_qa_trake_crud_order_image_and_unicode(imported_client: TestClient) -> None:
     client = imported_client
     kis = client.post(

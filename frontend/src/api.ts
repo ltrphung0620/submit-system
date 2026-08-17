@@ -98,6 +98,11 @@ export const api = {
   authSession: (apiKey?: string | null) =>
     request<AuthSession>("/auth/me", undefined, apiKey),
   listQueries: () => request<QueryRow[]>("/queries"),
+  deleteQuery: (queryId: string) =>
+    request<void>(`/queries/${encodeURIComponent(queryId)}`, {
+      method: "DELETE",
+    }),
+  deleteAllQueries: () => request<void>("/queries", { method: "DELETE" }),
   importQueries: (file: File) => {
     const data = new FormData();
     data.append("upload", file);
@@ -115,6 +120,10 @@ export const api = {
     request<ResultCandidate>("/submissions", {
       method: "POST",
       body: JSON.stringify(body),
+    }),
+  duplicateResult: (resultId: string) =>
+    request<ResultCandidate>(`/results/${encodeURIComponent(resultId)}/duplicate`, {
+      method: "POST",
     }),
   updateResult: (id: string, body: Record<string, unknown>) =>
     request<ResultCandidate>(`/results/${id}`, {

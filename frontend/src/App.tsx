@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, websocketUrl } from "./api";
-import { ApiRequestTester } from "./components/ApiRequestTester";
 import { CandidateEditor } from "./components/CandidateEditor";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { ExportWarningsDialog } from "./components/ExportWarningsDialog";
 import { QueryCard } from "./components/QueryCard";
+import { QueryZipUploader } from "./components/QueryZipUploader";
+import { collectExportWarnings, type ExportWarning } from "./exportWarnings";
 import { applyRealtimeEvent } from "./state";
 import type {
   AuthSession,
@@ -17,6 +20,11 @@ interface Props {
   onLogout: () => void;
 }
 
+type PendingDeletion =
+  | { kind: "candidate"; candidate: ResultCandidate }
+  | { kind: "query"; query: QueryRow }
+  | { kind: "all_queries" };
+
 export default function App({ authSession, onLogout }: Props) {
   const [queries, setQueries] = useState<QueryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,11 +33,16 @@ export default function App({ authSession, onLogout }: Props) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [submitterFilter, setSubmitterFilter] = useState("all");
   const [exporting, setExporting] = useState(false);
+  const [exportWarnings, setExportWarnings] = useState<ExportWarning[] | null>(null);
+  const [deletingAllQueries, setDeletingAllQueries] = useState(false);
   const [exportingQueryId, setExportingQueryId] = useState<string | null>(null);
   const [swappingResultIds, setSwappingResultIds] = useState<string[]>([]);
+  const [duplicatingResultIds, setDuplicatingResultIds] = useState<string[]>([]);
+  const [pendingDeletion, setPendingDeletion] = useState<PendingDeletion | null>(null);
+  const [confirmingDeletion, setConfirmingDeletion] = useState(false);
   const [editing, setEditing] = useState<{
     query: QueryRow;
-    candidate: ResultCandidate;
+    candidate?: ResultCandidate;
   } | null>(null);
   const queriesRef = useRef<QueryRow[]>([]);
 
@@ -78,6 +91,7 @@ export default function App({ authSession, onLogout }: Props) {
             : null;
         if (
           message.event === "query_set_imported" ||
+          message.event === "query_deleted" ||
           (createdQueryId &&
             !queriesRef.current.some((query) => query.id === createdQueryId))
         )
@@ -107,16 +121,16 @@ export default function App({ authSession, onLogout }: Props) {
     () =>
       Array.from(
         new Set(
-          submittedQueries.flatMap((query) =>
+          queries.flatMap((query) =>
             query.results.map((result) => result.submitter),
           ),
         ),
       ).sort(),
-    [submittedQueries],
+    [queries],
   );
   const filtered = useMemo(() => {
     const needle = search.toLocaleLowerCase();
-    return submittedQueries.filter((query) => {
+    return queries.filter((query) => {
       const haystack = `${query.file_name} ${query.content} ${query.results
         .map((result) => result.submitter)
         .join(" ")}`.toLocaleLowerCase();
@@ -127,15 +141,76 @@ export default function App({ authSession, onLogout }: Props) {
           query.results.some((result) => result.submitter === submitterFilter))
       );
     });
-  }, [search, submittedQueries, submitterFilter, typeFilter]);
+  }, [queries, search, submitterFilter, typeFilter]);
 
   async function deleteCandidate(candidate: ResultCandidate) {
-    if (!window.confirm(`Xóa candidate ưu tiên ${candidate.priority}?`)) return;
     try {
       await api.deleteResult(candidate);
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Không thể xóa");
+    }
+  }
+
+  async function duplicateCandidate(candidate: ResultCandidate) {
+    setDuplicatingResultIds((current) => [...current, candidate.id]);
+    try {
+      const duplicate = await api.duplicateResult(candidate.id);
+      setQueries((current) =>
+        applyRealtimeEvent(current, {
+          schema_version: 1,
+          event: "created",
+          occurred_at: new Date().toISOString(),
+          data: duplicate,
+        }),
+      );
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Không thể duplicate candidate");
+    } finally {
+      setDuplicatingResultIds((current) =>
+        current.filter((resultId) => resultId !== candidate.id),
+      );
+    }
+  }
+
+  async function deleteQuery(query: QueryRow) {
+    try {
+      await api.deleteQuery(query.id);
+      setQueries((current) => current.filter((item) => item.id !== query.id));
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Không thể xóa query");
+    }
+  }
+
+  async function deleteAllQueries() {
+    setDeletingAllQueries(true);
+    try {
+      await api.deleteAllQueries();
+      setQueries([]);
+      setError("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Không thể xóa toàn bộ query");
+    } finally {
+      setDeletingAllQueries(false);
+    }
+  }
+
+  async function confirmDeletion() {
+    if (!pendingDeletion || confirmingDeletion) return;
+    setConfirmingDeletion(true);
+    try {
+      if (pendingDeletion.kind === "candidate") {
+        await deleteCandidate(pendingDeletion.candidate);
+      } else if (pendingDeletion.kind === "query") {
+        await deleteQuery(pendingDeletion.query);
+      } else {
+        await deleteAllQueries();
+      }
+      setPendingDeletion(null);
+    } finally {
+      setConfirmingDeletion(false);
     }
   }
 
@@ -153,6 +228,15 @@ export default function App({ authSession, onLogout }: Props) {
     } finally {
       setExporting(false);
     }
+  }
+
+  function requestSubmissionZip() {
+    const warnings = collectExportWarnings(queries);
+    if (warnings.length) {
+      setExportWarnings(warnings);
+      return;
+    }
+    void downloadSubmissionZip();
   }
 
   async function downloadQueryCsv(query: QueryRow) {
@@ -231,9 +315,6 @@ export default function App({ authSession, onLogout }: Props) {
           <strong>Hệ thống nộp bài AIC 2026</strong>
         </a>
         <div className="session-controls">
-          <span>
-            {authSession.client_type === "anonymous" ? "Không xác thực" : "UI"}
-          </span>
           {authSession.authenticated && (
             <button className="button secondary compact" onClick={onLogout}>
               Đăng xuất
@@ -243,25 +324,6 @@ export default function App({ authSession, onLogout }: Props) {
       </header>
 
       <main id="main">
-        <ApiRequestTester
-          onSubmitted={async (result) => {
-            if (
-              queriesRef.current.some((query) => query.id === result.query_id)
-            ) {
-              setQueries((current) =>
-                applyRealtimeEvent(current, {
-                  schema_version: 1,
-                  event: "created",
-                  occurred_at: new Date().toISOString(),
-                  data: result,
-                }),
-              );
-            } else {
-              await refresh();
-            }
-          }}
-        />
-
         {error && (
           <p className="error-banner" role="alert">
             {error}
@@ -276,19 +338,26 @@ export default function App({ authSession, onLogout }: Props) {
             </div>
             <div className="workspace-actions">
               <span className="query-count">
-                {filtered.length} / {submittedQueries.length} nhóm ·{" "}
-                {submittedQueries.reduce(
-                  (total, query) => total + query.results.length,
-                  0,
-                )}{" "}
-                request
+                {filtered.length} / {queries.length} query
               </span>
+              <QueryZipUploader
+                onImported={async () => {
+                  await refresh();
+                }}
+              />
               <button
                 className="button secondary"
-                onClick={() => void downloadSubmissionZip()}
-                disabled={!submittedQueries.length || exporting}
+                onClick={requestSubmissionZip}
+                disabled={!queries.length || exporting}
               >
                 {exporting ? "Đang tạo ZIP…" : "Xuất submission.zip"}
+              </button>
+              <button
+                className="button danger-button"
+                onClick={() => setPendingDeletion({ kind: "all_queries" })}
+                disabled={!queries.length || deletingAllQueries}
+              >
+                {deletingAllQueries ? "Đang xóa…" : "Xóa toàn bộ query"}
               </button>
             </div>
           </div>
@@ -332,13 +401,17 @@ export default function App({ authSession, onLogout }: Props) {
             <div className="state-card" aria-busy="true">
               Đang tải submission…
             </div>
+          ) : queries.length === 0 ? (
+            <div className="state-card">
+              <b>Chưa có query nào</b>
+              <p>
+                Nạp file ZIP chứa query .txt để tạo các khung nộp bài.
+              </p>
+            </div>
           ) : filtered.length === 0 ? (
             <div className="state-card">
-              <b>Chưa có submission nào</b>
-              <p>
-                Dùng form test phía trên hoặc gửi request đến POST
-                /api/v1/submissions.
-              </p>
+              <b>Không có query phù hợp</b>
+              <p>Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.</p>
             </div>
           ) : (
             <div className="query-grid">
@@ -347,10 +420,13 @@ export default function App({ authSession, onLogout }: Props) {
                   key={query.id}
                   index={index + 1}
                   query={query}
+                  onAddCandidate={(value) => setEditing({ query: value })}
+                  onDeleteQuery={(value) => setPendingDeletion({ kind: "query", query: value })}
                   onEdit={(value, candidate) =>
                     setEditing({ query: value, candidate })
                   }
-                  onDelete={(candidate) => void deleteCandidate(candidate)}
+                  onDelete={(candidate) => setPendingDeletion({ kind: "candidate", candidate })}
+                  onDuplicate={(candidate) => void duplicateCandidate(candidate)}
                   onExport={(value) => void downloadQueryCsv(value)}
                   exporting={exportingQueryId === query.id}
                   onSwap={(first, second) => void swapPriorities(first, second)}
@@ -358,6 +434,7 @@ export default function App({ authSession, onLogout }: Props) {
                     void reorderPriorities(value, orderedResults)
                   }
                   swappingResultIds={swappingResultIds}
+                  duplicatingResultIds={duplicatingResultIds}
                 />
               ))}
             </div>
@@ -380,6 +457,40 @@ export default function App({ authSession, onLogout }: Props) {
               }),
             );
             setEditing(null);
+          }}
+        />
+      )}
+      {pendingDeletion && (
+        <ConfirmDialog
+          title={
+            pendingDeletion.kind === "candidate"
+              ? "Xóa candidate?"
+              : pendingDeletion.kind === "query"
+                ? "Xóa query?"
+                : "Xóa toàn bộ query?"
+          }
+          message={
+            pendingDeletion.kind === "candidate"
+              ? `Candidate #${pendingDeletion.candidate.priority} sẽ bị xóa.`
+              : pendingDeletion.kind === "query"
+                ? `Query ${pendingDeletion.query.file_name} và toàn bộ candidate bên trong sẽ bị xóa.`
+                : "Toàn bộ query và candidate bên trong sẽ bị xóa."
+          }
+          confirming={confirmingDeletion}
+          onCancel={() => {
+            if (!confirmingDeletion) setPendingDeletion(null);
+          }}
+          onConfirm={() => void confirmDeletion()}
+        />
+      )}
+      {exportWarnings && (
+        <ExportWarningsDialog
+          warnings={exportWarnings}
+          canContinue={submittedQueries.length > 0}
+          onClose={() => setExportWarnings(null)}
+          onContinue={() => {
+            setExportWarnings(null);
+            void downloadSubmissionZip();
           }}
         />
       )}

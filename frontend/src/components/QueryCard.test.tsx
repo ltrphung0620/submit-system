@@ -38,19 +38,26 @@ describe("QueryCard", () => {
       ],
     };
     const onExport = vi.fn();
+    const onAddCandidate = vi.fn();
+    const onDeleteQuery = vi.fn();
+    const onDuplicate = vi.fn();
     const onSwap = vi.fn();
     const onReorder = vi.fn();
     const { container, rerender } = render(
       <QueryCard
         index={1}
         query={query}
+        onAddCandidate={onAddCandidate}
+        onDeleteQuery={onDeleteQuery}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onDuplicate={onDuplicate}
         onExport={onExport}
         exporting={false}
         onSwap={onSwap}
         onReorder={onReorder}
         swappingResultIds={[]}
+        duplicatingResultIds={[]}
       />,
     );
     const image = screen.getByRole("img", {
@@ -68,9 +75,17 @@ describe("QueryCard", () => {
     expect(screen.getByText("answer")).toBeInTheDocument();
     expect(screen.getByText("submitter")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sửa" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Xóa" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Xóa candidate priority 1" }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Xuất CSV" }));
     expect(onExport).toHaveBeenCalledWith(query);
+    fireEvent.click(screen.getByRole("button", { name: "Thêm candidate" }));
+    expect(onAddCandidate).toHaveBeenCalledWith(query);
+    fireEvent.click(screen.getByRole("button", { name: "Xóa query query-1-qa" }));
+    expect(onDeleteQuery).toHaveBeenCalledWith(query);
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+    expect(onDuplicate).toHaveBeenCalledWith(query.results[0]);
     expect(screen.getByText("Bình Định")).toBeInTheDocument();
     expect(screen.queryByText("Nhận lúc")).not.toBeInTheDocument();
     expect(screen.queryByText(/Hợp lệ/)).not.toBeInTheDocument();
@@ -110,13 +125,17 @@ describe("QueryCard", () => {
       <QueryCard
         index={1}
         query={kisQuery}
+        onAddCandidate={vi.fn()}
+        onDeleteQuery={vi.fn()}
         onEdit={vi.fn()}
         onDelete={vi.fn()}
+        onDuplicate={vi.fn()}
         onExport={onExport}
         exporting={false}
         onSwap={onSwap}
         onReorder={onReorder}
         swappingResultIds={[]}
+        duplicatingResultIds={[]}
       />,
     );
     expect(screen.queryByText("answer")).not.toBeInTheDocument();
@@ -127,8 +146,8 @@ describe("QueryCard", () => {
       kisQuery.results[1],
       kisQuery.results[0],
     );
-    const firstCard = screen.getByText("Priority #1").closest(".candidate");
-    const secondCard = screen.getByText("Priority #2").closest(".candidate");
+    const firstCard = screen.getByText("#1").closest(".candidate");
+    const secondCard = screen.getByText("#2").closest(".candidate");
     const dataTransfer = {
       effectAllowed: "",
       dropEffect: "",
@@ -141,5 +160,41 @@ describe("QueryCard", () => {
       kisQuery.results[1],
       kisQuery.results[0],
     ]);
+  });
+
+  it("shows an imported query without candidates and opens candidate creation", () => {
+    const query: QueryRow = {
+      id: "q-empty",
+      query_set_id: "set-1",
+      file_name: "query-p1-1-kis",
+      query_type: "kis",
+      content: "Tìm người bước vào cửa hàng.",
+      display_order: 1,
+      source_path: "query-p1-1-kis.txt",
+      results: [],
+    };
+    const onAddCandidate = vi.fn();
+
+    render(
+      <QueryCard
+        index={1}
+        query={query}
+        onAddCandidate={onAddCandidate}
+        onDeleteQuery={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onDuplicate={vi.fn()}
+        onExport={vi.fn()}
+        exporting={false}
+        onSwap={vi.fn()}
+        onReorder={vi.fn()}
+        swappingResultIds={[]}
+        duplicatingResultIds={[]}
+      />,
+    );
+
+    expect(screen.getByText("Chưa có candidate")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Thêm candidate" }));
+    expect(onAddCandidate).toHaveBeenCalledWith(query);
   });
 });
